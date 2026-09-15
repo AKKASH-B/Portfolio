@@ -2660,49 +2660,12 @@
 
 <script>
 (function(){
-  var audioCtx = null;
-  var engineOsc, subOsc, subGain, filterNode, masterGain;
-  var isMuted = localStorage.getItem('akkash-sound-muted') === 'true';
   var lastScrollY = window.scrollY;
   var lastTime = performance.now();
   var velocity = 0;
-  var initialized = false;
   var needleEl = document.querySelector('.needle');
   var needleHubEl = document.querySelector('.needle-hub');
   var needleAngle = 0;
-
-  function initAudio(){
-    if(initialized) return;
-    initialized = true;
-
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-
-    masterGain = audioCtx.createGain();
-    masterGain.gain.value = 0;
-    masterGain.connect(audioCtx.destination);
-
-    filterNode = audioCtx.createBiquadFilter();
-    filterNode.type = 'lowpass';
-    filterNode.frequency.value = 300;
-    filterNode.Q.value = 0.8;
-    filterNode.connect(masterGain);
-
-    engineOsc = audioCtx.createOscillator();
-    engineOsc.type = 'sawtooth';
-    engineOsc.frequency.value = 55;
-    engineOsc.connect(filterNode);
-
-    subOsc = audioCtx.createOscillator();
-    subOsc.type = 'square';
-    subOsc.frequency.value = 27;
-    subGain = audioCtx.createGain();
-    subGain.gain.value = 0.35;
-    subOsc.connect(subGain);
-    subGain.connect(filterNode);
-
-    engineOsc.start();
-    subOsc.start();
-  }
 
   function update(){
     var now = performance.now();
@@ -2716,23 +2679,8 @@
     var instVelocity = dt > 0 ? (delta / dt) * 16 : 0;
     velocity += (instVelocity - velocity) * 0.2;
 
-    if(audioCtx){
-      if(!isMuted){
-        var targetFreq = 48 + Math.min(velocity * 6, 170);
-        var targetFilter = 260 + Math.min(velocity * 22, 2000);
-        var targetGain = Math.min(velocity / 14, 0.18);
-
-        engineOsc.frequency.setTargetAtTime(targetFreq, audioCtx.currentTime, 0.09);
-        subOsc.frequency.setTargetAtTime(targetFreq * 0.5, audioCtx.currentTime, 0.09);
-        filterNode.frequency.setTargetAtTime(targetFilter, audioCtx.currentTime, 0.09);
-        masterGain.gain.setTargetAtTime(targetGain, audioCtx.currentTime, 0.15);
-      } else {
-        masterGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1);
-      }
-    }
-
     // Drive the hero's right-hand gauge needle as a live rev indicator,
-    // synced to the same scroll velocity that drives the engine sound.
+    // synced to scroll velocity.
     if(needleEl){
       var revAmount = Math.min(velocity / 16, 1);
       needleAngle += (revAmount * 62 - needleAngle) * 0.25;
@@ -2753,65 +2701,6 @@
     requestAnimationFrame(update);
   }
   requestAnimationFrame(update);
-
-  function unlockAudio(){
-    initAudio();
-    if(audioCtx && audioCtx.state === 'suspended'){
-      audioCtx.resume();
-    }
-    window.removeEventListener('click', unlockAudio);
-    window.removeEventListener('touchend', unlockAudio);
-    window.removeEventListener('keydown', unlockAudio);
-    hideHint();
-  }
-  // NOTE: scrolling/wheel events do NOT count as a "user gesture" in
-  // Chrome/Safari/Firefox's autoplay policy, so they can't unlock audio.
-  // Only a genuine click/tap/keypress can start the AudioContext.
-  window.addEventListener('click', unlockAudio);
-  window.addEventListener('touchend', unlockAudio);
-  window.addEventListener('keydown', unlockAudio);
-
-  var btn = document.createElement('button');
-  btn.id = 'sound-toggle';
-  btn.type = 'button';
-  btn.setAttribute('aria-label', isMuted ? 'Unmute engine sound' : 'Mute engine sound');
-  btn.textContent = isMuted ? '\uD83D\uDD07' : '\uD83D\uDD0A';
-  btn.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:999;width:44px;height:44px;border-radius:50%;background:#14181d;border:1px solid #23282e;color:#ff9f45;font-size:17px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,.45);transition:transform .2s ease, border-color .2s ease;';
-  btn.addEventListener('mouseenter', function(){ btn.style.borderColor = '#ff9f45'; btn.style.transform = 'scale(1.08)'; });
-  btn.addEventListener('mouseleave', function(){ btn.style.borderColor = '#23282e'; btn.style.transform = 'scale(1)'; });
-  btn.addEventListener('click', function(e){
-    e.stopPropagation();
-    isMuted = !isMuted;
-    localStorage.setItem('akkash-sound-muted', isMuted);
-    btn.textContent = isMuted ? '\uD83D\uDD07' : '\uD83D\uDD0A';
-    btn.setAttribute('aria-label', isMuted ? 'Unmute engine sound' : 'Mute engine sound');
-  });
-  document.body.appendChild(btn);
-
-  // One-time hint so it's obvious a click is needed to enable audio
-  // (browsers block sound until a real click/tap/keypress happens).
-  var hint = null;
-  var hintTimer = null;
-  function showHint(){
-    if(isMuted || localStorage.getItem('akkash-sound-hint-seen') === 'true') return;
-    hint = document.createElement('div');
-    hint.textContent = 'Click anywhere to enable engine sound';
-    hint.style.cssText = 'position:fixed;bottom:72px;right:20px;z-index:999;background:#14181d;border:1px solid #23282e;color:#8892a0;font-family:Manrope,sans-serif;font-size:12px;padding:8px 12px;border-radius:4px;box-shadow:0 4px 16px rgba(0,0,0,.45);opacity:0;transition:opacity .3s ease;pointer-events:none;white-space:nowrap;';
-    document.body.appendChild(hint);
-    requestAnimationFrame(function(){ hint.style.opacity = '1'; });
-    hintTimer = setTimeout(hideHint, 5000);
-  }
-  function hideHint(){
-    localStorage.setItem('akkash-sound-hint-seen', 'true');
-    if(hintTimer) clearTimeout(hintTimer);
-    if(hint){
-      hint.style.opacity = '0';
-      var el = hint;
-      setTimeout(function(){ if(el.parentNode) el.parentNode.removeChild(el); }, 300);
-      hint = null;
-    }
-  }
-  setTimeout(showHint, 800);
 })();
 </script>
 
